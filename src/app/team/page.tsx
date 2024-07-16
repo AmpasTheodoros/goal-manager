@@ -15,7 +15,6 @@ const team: Team = {
     { id: 9, name: 'Tom Harris', role: 'Forward', skill: 84 },
     { id: 10, name: 'Olivia Martin', role: 'Forward', skill: 83 },
     { id: 11, name: 'Daniel White', role: 'Forward', skill: 82 },
-    // Substitutes
     { id: 12, name: 'Lisa Green', role: 'Goalkeeper', skill: 75 },
     { id: 13, name: 'Ryan Black', role: 'Defender', skill: 76 },
     { id: 14, name: 'Sophie Gray', role: 'Midfielder', skill: 77 },

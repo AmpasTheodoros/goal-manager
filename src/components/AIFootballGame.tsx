@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Team, Player } from '../types/team';
+import { Team } from '../types/team';
 
 interface Vector2D {
   x: number;
@@ -12,6 +12,7 @@ interface GamePlayer {
   role: string;
   skill: number;
   position: Vector2D;
+  homePosition: Vector2D;
   velocity: Vector2D;
 }
 
@@ -34,17 +35,28 @@ const FIELD_WIDTH = 100;
 const FIELD_HEIGHT = 64;
 const PLAYER_RADIUS = 1;
 const BALL_RADIUS = 0.5;
-const MAX_PLAYER_SPEED = 0.5; // Increased from 0.3
-const BALL_SPEED = 0.7; // Increased from 0.5
+const MAX_PLAYER_SPEED = 0.5;
+const BALL_SPEED = 0.7;
 const FRICTION = 0.98;
 
 const initializeGameState = (homeTeam: Team, awayTeam: Team): GameState => {
+  const formation442 = [
+    { x: 10, y: 32 }, // Goalkeeper
+    { x: 20, y: 10 }, { x: 20, y: 25 }, { x: 20, y: 39 }, { x: 20, y: 54 }, // Defenders
+    { x: 40, y: 10 }, { x: 40, y: 25 }, { x: 40, y: 39 }, { x: 40, y: 54 }, // Midfielders
+    { x: 60, y: 25 }, { x: 60, y: 39 } // Forwards
+  ];
+
   const initializePlayers = (team: Team, isHome: boolean): GamePlayer[] =>
     team.players.slice(0, 11).map((player, index) => ({
       ...player,
       position: {
-        x: isHome ? 20 + (index % 4) * 15 : 80 - (index % 4) * 15,
-        y: 10 + Math.floor(index / 4) * 15
+        x: isHome ? formation442[index].x : FIELD_WIDTH - formation442[index].x,
+        y: formation442[index].y
+      },
+      homePosition: {
+        x: isHome ? formation442[index].x : FIELD_WIDTH - formation442[index].x,
+        y: formation442[index].y
       },
       velocity: { x: 0, y: 0 }
     }));
@@ -68,9 +80,9 @@ const updatePlayerMovement = (player: GamePlayer, target: Vector2D): GamePlayer 
   const distance = Math.sqrt(dx * dx + dy * dy);
 
   if (distance > 0.1) {
-    const speed = Math.min(MAX_PLAYER_SPEED, distance / 5); // Increased reaction speed
-    const vx = (dx / distance) * speed + (Math.random() - 0.5) * 0.1; // Added some randomness
-    const vy = (dy / distance) * speed + (Math.random() - 0.5) * 0.1; // Added some randomness
+    const speed = Math.min(MAX_PLAYER_SPEED, distance / 5);
+    const vx = (dx / distance) * speed + (Math.random() - 0.5) * 0.1;
+    const vy = (dy / distance) * speed + (Math.random() - 0.5) * 0.1;
 
     return {
       ...player,
@@ -117,19 +129,28 @@ const updateGameState = (prevState: GameState): GameState => {
   const updatePlayers = (players: GamePlayer[], isHome: boolean) =>
     players.map(player => {
       let target: Vector2D;
-      if (newState.possession === (isHome ? 'home' : 'away')) {
-        // If in possession, move towards the opponent's goal
+
+      if (player.role === 'Goalkeeper') {
+        target = player.homePosition; // Goalkeeper stays near the goal
+      } else if (newState.possession === (isHome ? 'home' : 'away')) {
         target = {
-          x: isHome ? FIELD_WIDTH * 0.9 : FIELD_WIDTH * 0.1,
-          y: FIELD_HEIGHT / 2 + (Math.random() - 0.5) * 20
+          x: isHome ? Math.min(FIELD_WIDTH * 0.9, player.homePosition.x + 30) : Math.max(FIELD_WIDTH * 0.1, player.homePosition.x - 30),
+          y: player.homePosition.y
         };
       } else {
-        // If not in possession, move towards the ball
         target = {
-          x: newState.ball.position.x + (Math.random() - 0.5) * 10, // Add some spread
-          y: newState.ball.position.y + (Math.random() - 0.5) * 10  // Add some spread
+          x: newState.ball.position.x + (Math.random() - 0.5) * 20,
+          y: newState.ball.position.y + (Math.random() - 0.5) * 20
         };
       }
+
+      if (Math.abs(target.x - player.homePosition.x) > 40 || Math.abs(target.y - player.homePosition.y) > 40) {
+        target = {
+          x: (target.x + player.homePosition.x) / 2,
+          y: (target.y + player.homePosition.y) / 2
+        };
+      }
+
       return updatePlayerMovement(player, target);
     });
 
@@ -185,19 +206,29 @@ const AIFootballGame: React.FC<{ homeTeam: Team; awayTeam: Team }> = ({ homeTeam
       ctx.stroke();
     };
 
+    const perspectiveTransform = (position: Vector2D) => {
+      const scale = 0.8 + (position.x / FIELD_WIDTH) * 0.4;
+      return {
+        x: position.x * 10,
+        y: position.y * 10 * scale
+      };
+    };
+
     const drawPlayers = (players: GamePlayer[], color: string) => {
       players.forEach(player => {
+        const transformedPosition = perspectiveTransform(player.position);
         ctx.fillStyle = color;
         ctx.beginPath();
-        ctx.arc(player.position.x * 10, player.position.y * 10, PLAYER_RADIUS * 10, 0, Math.PI * 2);
+        ctx.arc(transformedPosition.x, transformedPosition.y, PLAYER_RADIUS * 10, 0, Math.PI * 2);
         ctx.fill();
       });
     };
 
     const drawBall = () => {
+      const transformedPosition = perspectiveTransform(gameState.ball.position);
       ctx.fillStyle = 'white';
       ctx.beginPath();
-      ctx.arc(gameState.ball.position.x * 10, gameState.ball.position.y * 10, BALL_RADIUS * 10, 0, Math.PI * 2);
+      ctx.arc(transformedPosition.x, transformedPosition.y, BALL_RADIUS * 10, 0, Math.PI * 2);
       ctx.fill();
     };
 
@@ -213,7 +244,7 @@ const AIFootballGame: React.FC<{ homeTeam: Team; awayTeam: Team }> = ({ homeTeam
     const intervalId = setInterval(gameLoop, 33); // ~30 fps
 
     return () => clearInterval(intervalId);
-  }, []);
+  }, [gameState]);
 
   return (
     <div className="w-full max-w-4xl mx-auto">
